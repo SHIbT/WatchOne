@@ -2,24 +2,73 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 27
+
+    def versionPropsFile = rootProject.file('version.properties')
+    def build
+    def name
+    def code
+    def date = new Date()
+    def formattedDate = date.format('yyyyMMddHHmmss')
+
+    if (versionPropsFile.canRead()) {
+        Properties versionProps = new Properties()
+
+        versionProps.load(new FileInputStream(versionPropsFile))
+        build = versionProps['WatchOne_VERSION_BUILD'].toString()
+        name = versionProps['WatchOne_VERSION_NAME'].toString()
+        code = versionProps['WatchOne_VERSION_CODE'].toInteger()
+    } else {
+        throw new FileNotFoundException("Could not read version.properties!")
+    }
+/*Wrapping inside a method avoids auto incrementing on every gradle task run. Now it runs only when we build apk*/
+    ext.autoIncrementBuildNumber = {
+
+        if (versionPropsFile.canRead()) {
+            Properties versionProps = new Properties()
+            versionProps.load(new FileInputStream(versionPropsFile))
+            build = formattedDate
+            code = versionProps['WatchOne_VERSION_CODE'].toInteger() + 1
+            versionProps['WatchOne_VERSION_BUILD'] = build.toString()
+            versionProps['WatchOne_VERSION_CODE'] = code.toString()
+            versionProps.store(versionPropsFile.newWriter(), null)
+        } else {
+            throw new FileNotFoundException("Could not read version.properties!")
+        }
+    }
+
     defaultConfig {
         applicationId "uk.co.shibt.watchone"
         minSdkVersion 25
         targetSdkVersion 27
-        versionCode 1
-        versionName "1.0"
+        versionName name + "." + build
+        versionCode code
         multiDexEnabled true
     }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            applicationVariants.all { variant ->
+                variant.outputs.all {
+                    outputFileName = "SHIbT-WatchOne-${versionName}.apk"
+                }
+            }
+    }
+        // Hook to check if the release/debug task is among the tasks to be executed.
+        //Let's make use of it
+        gradle.taskGraph.whenReady { taskGraph ->
+            if (taskGraph.hasTask(assembleDebug)) {  /* when run debug task */
+                autoIncrementBuildNumber()
+            } else if (taskGraph.hasTask(assembleRelease)) { /* when run release task */
+                autoIncrementBuildNumber()
+            }
         }
     }
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.android.support:wear:27.1.1'
     implementation 'com.google.android.support:wearable:2.3.0'
     implementation 'com.google.android.gms:play-services-wearable:15.0.1'
     implementation 'com.android.support:percent:27.1.1'
